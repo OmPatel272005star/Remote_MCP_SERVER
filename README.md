@@ -1,14 +1,14 @@
 # Remote Weather MCP Server
 
-A minimal MCP server with 2 tools, backed by [Open-Meteo](https://open-meteo.com/)
-(free, no API key, no signup required).
+A minimal MCP server with 2 tools, backed by [wttr.in](https://wttr.in/)
+(free, no API key, no signup required, single call per tool).
 
 ## Tools
 
 - `get_current_weather(city: str) -> dict`
   Returns `{city, temperature_c, wind_kph, condition}`.
 - `get_forecast(city: str, days: int = 3) -> dict`
-  Returns `{city, forecast: [{date, temp_max_c, temp_min_c, condition}, ...]}` (1-7 days).
+  Returns `{city, forecast: [{date, temp_max_c, temp_min_c, condition}, ...]}` (1-3 days).
 
 ## Run locally
 

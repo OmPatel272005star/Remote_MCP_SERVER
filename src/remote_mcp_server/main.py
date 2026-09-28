@@ -4,103 +4,49 @@ import os
 
 mcp = FastMCP("Weather server")
 
-GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
-FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
-
-WMO_CODES = {
-    0: "Clear sky",
-    1: "Mainly clear",
-    2: "Partly cloudy",
-    3: "Overcast",
-    45: "Fog",
-    48: "Freezing fog",
-    51: "Light drizzle",
-    53: "Moderate drizzle",
-    55: "Dense drizzle",
-    61: "Slight rain",
-    63: "Moderate rain",
-    65: "Heavy rain",
-    71: "Slight snow",
-    73: "Moderate snow",
-    75: "Heavy snow",
-    80: "Rain showers",
-    81: "Moderate rain showers",
-    82: "Violent rain showers",
-    95: "Thunderstorm",
-}
+WTTR_URL = "https://wttr.in/{city}"
 
 
-def describe(code: int) -> str:
-    return WMO_CODES.get(code, f"Unknown (code {code})")
-
-
-async def geocode(city: str) -> tuple[float, float, str]:
+async def fetch_weather(city: str) -> dict:
     async with httpx.AsyncClient() as client:
-        response = await client.get(GEOCODE_URL, params={"name": city, "count": 1})
+        response = await client.get(WTTR_URL.format(city=city), params={"format": "j1"})
         response.raise_for_status()
-        results = response.json().get("results")
-
-    if not results:
-        raise ValueError(f"City not found: {city}")
-
-    location = results[0]
-    return location["latitude"], location["longitude"], location.get("name", city)
+        return response.json()
 
 
 @mcp.tool
 async def get_current_weather(city: str) -> dict:
     """Get the current weather for a city."""
 
-    latitude, longitude, resolved_name = await geocode(city)
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            FORECAST_URL,
-            params={"latitude": latitude, "longitude": longitude, "current_weather": "true"},
-        )
-        response.raise_for_status()
-        current = response.json()["current_weather"]
+    data = await fetch_weather(city)
+    current = data["current_condition"][0]
 
     return {
-        "city": resolved_name,
-        "temperature_c": current["temperature"],
-        "wind_kph": current["windspeed"],
-        "condition": describe(current["weathercode"]),
+        "city": city,
+        "temperature_c": float(current["temp_C"]),
+        "wind_kph": float(current["windspeedKmph"]),
+        "condition": current["weatherDesc"][0]["value"].strip(),
     }
 
 
 @mcp.tool
 async def get_forecast(city: str, days: int = 3) -> dict:
-    """Get a daily weather forecast for a city (1-7 days)."""
+    """Get a daily weather forecast for a city (1-3 days)."""
 
-    days = max(1, min(days, 7))
-    latitude, longitude, resolved_name = await geocode(city)
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            FORECAST_URL,
-            params={
-                "latitude": latitude,
-                "longitude": longitude,
-                "daily": "temperature_2m_max,temperature_2m_min,weathercode",
-                "timezone": "auto",
-                "forecast_days": days,
-            },
-        )
-        response.raise_for_status()
-        daily = response.json()["daily"]
+    days = max(1, min(days, 3))
+    data = await fetch_weather(city)
 
     forecast = [
         {
-            "date": date,
-            "temp_max_c": daily["temperature_2m_max"][i],
-            "temp_min_c": daily["temperature_2m_min"][i],
-            "condition": describe(daily["weathercode"][i]),
+            "date": day["date"],
+            "temp_max_c": float(day["maxtempC"]),
+            "temp_min_c": float(day["mintempC"]),
+            "condition": day["hourly"][4]["weatherDesc"][0]["value"].strip(),
         }
-        for i, date in enumerate(daily["time"])
+        for day in data["weather"][:days]
     ]
 
-    return {"city": resolved_name, "forecast": forecast}
+    return {"city": city, "forecast": forecast}
 
 
 if __name__ == "__main__":
